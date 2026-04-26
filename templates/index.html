@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SURAI — Voice AI Task Agent</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --red:        #e50000;
+      --red-dark:   #8b0000;
+      --red-glow:   #ff000044;
+      --red-dim:    #5a0000;
+      --black:      #000000;
+      --black-mid:  #0d0d0d;
+      --black-card: #111111;
+      --black-border:#1a1a1a;
+      --grey:       #2a2a2a;
+      --grey-light: #444;
+      --white:      #f0e6e6;
+      --white-dim:  #c0a8a8;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--black);
+      color: var(--white);
+      font-family: 'Rajdhani', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Grid scanline overlay ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(229,0,0,0.02) 3px, rgba(229,0,0,0.02) 4px),
+        repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(229,0,0,0.015) 3px, rgba(229,0,0,0.015) 4px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ── Layout ── */
+    .app-shell {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 320px 1fr 260px;
+      grid-template-rows: auto 1fr;
+      height: 100vh;
+      gap: 0;
+    }
+
+    /* ── Header ── */
+    header {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 64px;
+      border-bottom: 1px solid var(--red-dark);
+      background: linear-gradient(90deg, var(--black) 0%, #130000 50%, var(--black) 100%);
+      box-shadow: 0 0 40px rgba(229,0,0,0.15);
+    }
+
+    .logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2rem;
+      letter-spacing: 6px;
+      color: var(--red);
+      text-shadow: 0 0 20px var(--red), 0 0 40px rgba(229,0,0,0.4);
+    }
+    .logo span { color: var(--white); opacity: 0.5; font-size: 0.8rem; letter-spacing: 3px; display: block; margin-top: -6px; }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--white-dim);
+    }
+    .status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 8px var(--red);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+
+    /* ── Left panel — Memory ── */
+    .panel-memory {
+      background: var(--black-card);
+      border-right: 1px solid var(--black-border);
+      padding: 24px 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .panel-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.1rem;
+      letter-spacing: 4px;
+      color: var(--red);
+      border-bottom: 1px solid var(--red-dim);
+      padding-bottom: 8px;
+      margin-bottom: 4px;
+    }
+
+    .memory-item {
+      background: var(--black-mid);
+      border: 1px solid var(--black-border);
+      border-left: 2px solid var(--red-dark);
+      padding: 10px 12px;
+      border-radius: 2px;
+      font-size: 0.78rem;
+      color: var(--white-dim);
+      line-height: 1.5;
+    }
+    .memory-item .mem-time {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--grey-light);
+      margin-bottom: 4px;
+    }
+
+    .empty-state {
+      color: var(--grey-light);
+      font-size: 0.8rem;
+      font-style: italic;
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    /* ── Center — Chat ── */
+    .panel-chat {
+      display: flex;
+      flex-direction: column;
+      background: var(--black-mid);
+    }
+
+    /* Voice orb section */
+    .voice-section {
+      padding: 28px 0 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--black-border);
+      background: radial-gradient(ellipse at 50% 0%, #1a0000 0%, transparent 70%);
+    }
+
+    .orb-wrap {
+      position: relative;
+      width: 100px; height: 100px;
+    }
+    .orb {
+      width: 100px; height: 100px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #ff4444, #8b0000 50%, #1a0000);
+      border: 2px solid var(--red-dark);
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 0 20px rgba(229,0,0,0.3), inset 0 0 20px rgba(0,0,0,0.5);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2rem;
+      position: relative;
+      z-index: 2;
+    }
+    .orb:hover { box-shadow: 0 0 40px rgba(229,0,0,0.6), inset 0 0 20px rgba(0,0,0,0.5); transform: scale(1.05); }
+    .orb.recording {
+      animation: orb-pulse 1s infinite;
+      box-shadow: 0 0 60px rgba(229,0,0,0.8), inset 0 0 20px rgba(0,0,0,0.5);
+    }
+    @keyframes orb-pulse {
+      0%,100% { transform: scale(1); box-shadow: 0 0 40px rgba(229,0,0,0.6); }
+      50% { transform: scale(1.08); box-shadow: 0 0 80px rgba(229,0,0,0.9); }
+    }
+
+    /* Ripple rings */
+    .orb-ring {
+      position: absolute; top: 50%; left: 50%;
+      width: 100px; height: 100px;
+      border-radius: 50%;
+      border: 1px solid var(--red);
+      transform: translate(-50%,-50%);
+      opacity: 0;
+    }
+    .orb.recording ~ .orb-ring:nth-child(1) { animation: ripple 1.5s 0s infinite; }
+    .orb.recording ~ .orb-ring:nth-child(2) { animation: ripple 1.5s 0.4s infinite; }
+    .orb.recording ~ .orb-ring:nth-child(3) { animation: ripple 1.5s 0.8s infinite; }
+    @keyframes ripple {
+      0%   { transform: translate(-50%,-50%) scale(1); opacity: 0.8; }
+      100% { transform: translate(-50%,-50%) scale(2.5); opacity: 0; }
+    }
+
+    .voice-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--grey-light);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    .voice-label.active { color: var(--red); }
+
+    /* Chat messages */
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .chat-messages::-webkit-scrollbar { width: 4px; }
+    .chat-messages::-webkit-scrollbar-track { background: transparent; }
+    .chat-messages::-webkit-scrollbar-thumb { background: var(--red-dark); border-radius: 2px; }
+
+    .msg {
+      max-width: 78%;
+      padding: 12px 16px;
+      border-radius: 3px;
+      font-size: 0.92rem;
+      line-height: 1.5;
+      animation: msg-in 0.3s ease;
+    }
+    @keyframes msg-in { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform:none; } }
+
+    .msg.user {
+      align-self: flex-end;
+      background: var(--red-dark);
+      border: 1px solid var(--red);
+      color: var(--white);
+      border-bottom-right-radius: 0;
+    }
+    .msg.agent {
+      align-self: flex-start;
+      background: var(--black-card);
+      border: 1px solid var(--black-border);
+      border-left: 2px solid var(--red);
+      color: var(--white);
+      border-bottom-left-radius: 0;
+    }
+    .msg-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.6rem;
+      color: var(--grey-light);
+      margin-bottom: 4px;
+      letter-spacing: 2px;
+    }
+
+    /* Text input */
+    .chat-input-row {
+      display: flex;
+      gap: 8px;
+      padding: 16px 24px;
+      border-top: 1px solid var(--black-border);
+      background: var(--black-card);
+    }
+    .chat-input {
+      flex: 1;
+      background: var(--black-mid);
+      border: 1px solid var(--grey);
+      border-radius: 2px;
+      color: var(--white);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 0.95rem;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .chat-input:focus { border-color: var(--red); box-shadow: 0 0 0 2px var(--red-glow); }
+    .chat-input::placeholder { color: var(--grey-light); }
+
+    .btn {
+      background: var(--red-dark);
+      border: 1px solid var(--red);
+      color: var(--white);
+      font-family: 'Bebas Neue', sans-serif;
+      letter-spacing: 2px;
+      font-size: 0.9rem;
+      padding: 10px 18px;
+      cursor: pointer;
+      border-radius: 2px;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: var(--red); box-shadow: 0 0 16px var(--red-glow); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn.danger { background: #1a0000; border-color: var(--red-dark); }
+    .btn.danger:hover { background: var(--red-dim); }
+
+    /* ── Right panel — Todos ── */
+    .panel-todos {
+      background: var(--black-card);
+      border-left: 1px solid var(--black-border);
+      padding: 24px 16px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .todo-item {
+      background: var(--black-mid);
+      border: 1px solid var(--black-border);
+      border-radius: 2px;
+      padding: 12px;
+      font-size: 0.82rem;
+      animation: msg-in 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .todo-item::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 3px;
+    }
+    .todo-item.priority-high::before { background: var(--red); box-shadow: 0 0 6px var(--red); }
+    .todo-item.priority-medium::before { background: #cc6600; }
+    .todo-item.priority-low::before { background: var(--grey-light); }
+    .todo-item.completed { opacity: 0.45; }
+    .todo-item.completed .todo-title { text-decoration: line-through; }
+
+    .todo-id {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.6rem;
+      color: var(--grey-light);
+    }
+    .todo-title {
+      color: var(--white);
+      font-weight: 600;
+      font-size: 0.88rem;
+      margin: 4px 0;
+      line-height: 1.3;
+    }
+    .todo-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+    .badge {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.58rem;
+      padding: 2px 6px;
+      border-radius: 1px;
+      text-transform: uppercase;
+    }
+    .badge-high { background: var(--red-dim); color: #ff8888; border: 1px solid var(--red-dark); }
+    .badge-medium { background: #2a1500; color: #ff9944; border: 1px solid #663300; }
+    .badge-low { background: var(--grey); color: var(--white-dim); border: 1px solid var(--grey-light); }
+    .badge-done { background: #001a00; color: #44ff88; border: 1px solid #004400; }
+    .badge-due { background: #0d0d0d; color: var(--white-dim); border: 1px solid var(--grey); }
+
+    .stats-bar {
+      display: flex;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--black-border);
+      margin-bottom: 4px;
+    }
+    .stat {
+      flex: 1;
+      text-align: center;
+    }
+    .stat-val {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.4rem;
+      color: var(--red);
+      line-height: 1;
+    }
+    .stat-lbl {
+      font-size: 0.6rem;
+      color: var(--grey-light);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* Thinking indicator */
+    .thinking {
+      display: flex; align-items: center; gap: 6px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--grey-light);
+      padding: 6px 10px;
+    }
+    .thinking-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--red);
+      animation: blink 1.2s infinite;
+    }
+    .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+    .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%,80%,100%{opacity:0.2;} 40%{opacity:1;} }
+
+    /* API key config banner */
+    .config-banner {
+      background: #1a0800;
+      border: 1px solid #663300;
+      padding: 10px 16px;
+      font-size: 0.8rem;
+      color: #ff9944;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .config-banner input {
+      flex: 1;
+      min-width: 200px;
+      background: var(--black-mid);
+      border: 1px solid #663300;
+      color: var(--white);
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.75rem;
+      padding: 5px 10px;
+      border-radius: 2px;
+      outline: none;
+    }
+    .config-banner input:focus { border-color: var(--red); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--red-dark); }
+
+    @media (max-width: 900px) {
+      .app-shell { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr auto; height: auto; min-height: 100vh; }
+      .panel-memory, .panel-todos { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">SURAI<span>Voice AI Agent</span></div>
+    <div class="header-status">
+      <div class="status-dot"></div>
+      <span id="system-status">SYSTEM ONLINE</span>
+    </div>
+    <button class="btn danger" onclick="resetSession()" style="font-size:0.7rem;padding:6px 12px;">RESET</button>
+  </header>
+
+  <!-- LEFT — MEMORY -->
+  <aside class="panel-memory">
+    <div class="panel-title">// MEMORY LOG</div>
+    <div id="memory-list"><div class="empty-state">No memories yet.<br>Start talking to SURAI.</div></div>
+  </aside>
+
+  <!-- CENTER — CHAT -->
+  <main class="panel-chat">
+    <div class="config-banner" id="api-banner">
+      <span>⚠ GEMINI API KEY</span>
+      <input type="password" id="api-key-input" placeholder="Paste your Gemini API key..." />
+      <button class="btn" onclick="saveApiKey()">SET KEY</button>
+    </div>
+
+    <div class="voice-section">
+      <div class="orb-wrap">
+        <div class="orb" id="orb" onclick="toggleVoice()">🎙</div>
+        <div class="orb-ring"></div>
+        <div class="orb-ring"></div>
+        <div class="orb-ring"></div>
+      </div>
+      <div class="voice-label" id="voice-label">CLICK TO SPEAK</div>
+    </div>
+
+    <div class="chat-messages" id="chat-messages">
+      <div class="msg agent">
+        <div class="msg-label">SURAI</div>
+        Hello! I'm SURAI, your voice-enabled task manager. You can speak or type to add tasks, check your list, mark things complete, or ask me to recall past interactions. How can I help?
+      </div>
+    </div>
+
+    <div class="chat-input-row">
+      <input class="chat-input" id="text-input" type="text" placeholder="Type a command or question..." onkeydown="if(event.key==='Enter')sendText()" />
+      <button class="btn" id="send-btn" onclick="sendText()">SEND</button>
+    </div>
+  </main>
+
+  <!-- RIGHT — TODOS -->
+  <aside class="panel-todos">
+    <div class="panel-title">// TASK LIST</div>
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-val" id="stat-total">0</div><div class="stat-lbl">Total</div></div>
+      <div class="stat"><div class="stat-val" id="stat-pending">0</div><div class="stat-lbl">Pending</div></div>
+      <div class="stat"><div class="stat-val" id="stat-done">0</div><div class="stat-lbl">Done</div></div>
+    </div>
+    <div id="todo-list"><div class="empty-state">No tasks yet.<br>Ask SURAI to add one.</div></div>
+  </aside>
+
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let recognition = null;
+  let isRecording = false;
+  let apiKey = localStorage.getItem('SURAI_api_key') || '';
+
+  if (apiKey) document.getElementById('api-banner').style.display = 'none';
+
+  // ── API Key ────────────────────────────────────────────────────────────────
+  function saveApiKey() {
+    const k = document.getElementById('api-key-input').value.trim();
+    if (!k) return;
+    apiKey = k;
+    localStorage.setItem('SURAI_api_key', k);
+    document.getElementById('api-banner').style.display = 'none';
+    // send key to backend
+    fetch('/api/set_key', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({key: k}) });
+  }
+
+  // ── Voice ──────────────────────────────────────────────────────────────────
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  function toggleVoice() {
+    if (!SpeechRecognition) {
+      addMessage('agent', 'Voice recognition is not supported in this browser. Please use Chrome.');
+      return;
+    }
+    if (isRecording) {
+      recognition.stop();
+      return;
+    }
+    recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      isRecording = true;
+      document.getElementById('orb').classList.add('recording');
+      document.getElementById('voice-label').textContent = 'LISTENING...';
+      document.getElementById('voice-label').classList.add('active');
+    };
+
+    recognition.onresult = (e) => {
+      const transcript = e.results[0][0].transcript;
+      sendMessage(transcript);
+    };
+
+    recognition.onerror = (e) => {
+      console.error('Speech error:', e.error);
+      stopRecording();
+    };
+
+    recognition.onend = () => stopRecording();
+    recognition.start();
+  }
+
+  function stopRecording() {
+    isRecording = false;
+    document.getElementById('orb').classList.remove('recording');
+    document.getElementById('voice-label').textContent = 'CLICK TO SPEAK';
+    document.getElementById('voice-label').classList.remove('active');
+  }
+
+  // ── TTS ────────────────────────────────────────────────────────────────────
+  function speak(text) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = 1.0;
+    utt.pitch = 0.9;
+    // Prefer a female voice
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.name.includes('Samantha') || v.name.includes('Google US English') || v.lang === 'en-US');
+    if (preferred) utt.voice = preferred;
+    window.speechSynthesis.speak(utt);
+  }
+
+  // ── Send ───────────────────────────────────────────────────────────────────
+  function sendText() {
+    const inp = document.getElementById('text-input');
+    const msg = inp.value.trim();
+    if (!msg) return;
+    inp.value = '';
+    sendMessage(msg);
+  }
+
+  async function sendMessage(text) {
+    addMessage('user', text);
+    showThinking();
+    document.getElementById('send-btn').disabled = true;
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text })
+      });
+      const data = await res.json();
+      hideThinking();
+
+      if (data.error) {
+        addMessage('agent', '⚠ Error: ' + data.error);
+      } else {
+        addMessage('agent', data.reply);
+        speak(data.reply);
+        if (data.todos) updateTodos(data.todos);
+        if (data.memories) updateMemory(data.memories);
+      }
+    } catch (err) {
+      hideThinking();
+      addMessage('agent', '⚠ Could not reach the server. Is the Flask backend running?');
+    }
+
+    document.getElementById('send-btn').disabled = false;
+  }
+
+  // ── UI helpers ─────────────────────────────────────────────────────────────
+  let thinkingEl = null;
+
+  function showThinking() {
+    const chat = document.getElementById('chat-messages');
+    thinkingEl = document.createElement('div');
+    thinkingEl.className = 'thinking';
+    thinkingEl.innerHTML = '<div class="thinking-dot"></div><div class="thinking-dot"></div><div class="thinking-dot"></div><span>SURAI processing...</span>';
+    chat.appendChild(thinkingEl);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function hideThinking() {
+    if (thinkingEl) { thinkingEl.remove(); thinkingEl = null; }
+  }
+
+  function addMessage(role, text) {
+    const chat = document.getElementById('chat-messages');
+    const div = document.createElement('div');
+    div.className = 'msg ' + role;
+    div.innerHTML = `<div class="msg-label">${role === 'user' ? 'YOU' : 'SURAI'}</div>${escHtml(text)}`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+  }
+
+  function updateTodos(todos) {
+    const el = document.getElementById('todo-list');
+    const total = todos.length;
+    const done = todos.filter(t => t.completed).length;
+    const pending = total - done;
+    document.getElementById('stat-total').textContent = total;
+    document.getElementById('stat-pending').textContent = pending;
+    document.getElementById('stat-done').textContent = done;
+
+    if (!total) { el.innerHTML = '<div class="empty-state">No tasks yet.</div>'; return; }
+
+    el.innerHTML = todos.slice().reverse().map(t => `
+      <div class="todo-item priority-${t.priority} ${t.completed ? 'completed' : ''}">
+        <div class="todo-id">#${t.id}</div>
+        <div class="todo-title">${escHtml(t.title)}</div>
+        <div class="todo-meta">
+          <span class="badge badge-${t.priority}">${t.priority}</span>
+          ${t.completed ? '<span class="badge badge-done">✓ Done</span>' : ''}
+          ${t.due_date ? `<span class="badge badge-due">${t.due_date}</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function updateMemory(memories) {
+    const el = document.getElementById('memory-list');
+    if (!memories.length) { el.innerHTML = '<div class="empty-state">No memories yet.</div>'; return; }
+    el.innerHTML = memories.slice().reverse().map(m => {
+      const t = new Date(m.timestamp);
+      const time = t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      return `<div class="memory-item"><div class="mem-time">${time}</div>${escHtml(m.event)}</div>`;
+    }).join('');
+  }
+
+  async function resetSession() {
+    if (!confirm('Reset all tasks and memory?')) return;
+    await fetch('/api/reset', { method: 'POST' });
+    document.getElementById('chat-messages').innerHTML = '';
+    document.getElementById('todo-list').innerHTML = '<div class="empty-state">No tasks yet.</div>';
+    document.getElementById('memory-list').innerHTML = '<div class="empty-state">No memories yet.</div>';
+    ['stat-total','stat-pending','stat-done'].forEach(id => document.getElementById(id).textContent = '0');
+    addMessage('agent', 'Session reset. Fresh start — how can I help?');
+  }
+
+  // Load initial data on page load
+  (async () => {
+    try {
+      const r = await fetch('/api/todos');
+      const d = await r.json();
+      if (d.todos) updateTodos(d.todos);
+      const r2 = await fetch('/api/memory');
+      const d2 = await r2.json();
+      if (d2.memories) updateMemory(d2.memories);
+    } catch {}
+  })();
+</script>
+</body>
+</html>
